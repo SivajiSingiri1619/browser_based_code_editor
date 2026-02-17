@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
+import useEditorHistory from "../hooks/useEditorHistory";
 
 function Editor() {
   const editorRef = useRef(null);
+const { content, updateContent, undo, redo, historySize } = useEditorHistory("");
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -58,17 +60,20 @@ function Editor() {
       }}
     >
       <textarea
-        ref={editorRef}
-        data-test-id="editor-input"
-        style={{
-          width: "100%",
-          height: "100%",
-          fontFamily: "monospace",
-          fontSize: "16px",
-          outline: "none",
-          resize: "none"
-        }}
-      />
+  ref={editorRef}
+  value={content}
+  onChange={(e) => updateContent(e.target.value)}
+  data-test-id="editor-input"
+  style={{
+    width: "100%",
+    height: "100%",
+    fontFamily: "monospace",
+    fontSize: "16px",
+    outline: "none",
+    resize: "none"
+  }}
+/>
+
     </div>
   );
 }
