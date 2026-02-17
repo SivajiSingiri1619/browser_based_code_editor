@@ -1,7 +1,11 @@
+import Editor from "./components/Editor";
+import Dashboard from "./components/Dashboard";
+
 function App() {
   return (
-    <div>
-      <h1>Browser Code Editor</h1>
+    <div style={{display:"flex", height:"100vh"}}>
+      <Editor />
+      <Dashboard />
     </div>
   );
 }
