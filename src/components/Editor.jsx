@@ -2,13 +2,21 @@ import { useEffect, useRef } from "react";
 import useEditorHistory from "../hooks/useEditorHistory";
 
 function Editor() {
+
   const editorRef = useRef(null);
-const { content, updateContent, undo, redo, historySize } = useEditorHistory("");
+  const stateRef = useRef(null);
+
+  // history hook
+  const { content, updateContent, undo, redo, historySize } = useEditorHistory("");
+
+  // keep latest values inside ref (VERY IMPORTANT)
+  stateRef.current = { content, updateContent, undo, redo };
 
   useEffect(() => {
+
     const editor = editorRef.current;
 
-    // function to add logs into dashboard
+    // ---------- EVENT LOGGER ----------
     function addLog(type, e) {
       const logContainer = document.querySelector(
         '[data-test-id="event-log-list"]'
@@ -18,66 +26,158 @@ const { content, updateContent, undo, redo, historySize } = useEditorHistory("")
 
       const entry = document.createElement("div");
       entry.setAttribute("data-test-id", "event-log-entry");
-
       entry.textContent = `${type} : ${e.key}`;
 
       logContainer.appendChild(entry);
-
-      // auto scroll
       logContainer.scrollTop = logContainer.scrollHeight;
     }
 
-    // Event listeners
+    // helper to always access latest state
+    const getState = () => stateRef.current;
+
+    // ---------- KEYDOWN HANDLER ----------
     const keydownHandler = (e) => {
-  addLog("keydown", e);
 
-  const isMac = navigator.platform.toUpperCase().includes("MAC");
-  const modifier = isMac ? e.metaKey : e.ctrlKey;
+      addLog("keydown", e);
 
-  // SAVE (Ctrl+S / Cmd+S)
-  if (modifier && e.key.toLowerCase() === "s") {
-    e.preventDefault();   // 🔥 MOST IMPORTANT LINE
+      const { content, updateContent, undo, redo } = getState();
 
-    const logContainer = document.querySelector(
-      '[data-test-id="event-log-list"]'
-    );
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
 
-    const entry = document.createElement("div");
-    entry.setAttribute("data-test-id", "event-log-entry");
-    entry.textContent = "Action: Save";
+      // ================= SAVE (Ctrl+S) =================
+      if (modifier && e.key.toLowerCase() === "s") {
+        e.preventDefault();
 
-    logContainer.appendChild(entry);
-    logContainer.scrollTop = logContainer.scrollHeight;
+        const logContainer = document.querySelector('[data-test-id="event-log-list"]');
+        const entry = document.createElement("div");
+        entry.setAttribute("data-test-id", "event-log-entry");
+        entry.textContent = "Action: Save";
 
-    return;
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+        return;
+      }
+
+      // ================= UNDO =================
+      if (modifier && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      // ================= REDO =================
+      if (modifier && e.key.toLowerCase() === "z" && e.shiftKey) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+     
+
+      // ================= SMART ENTER =================
+if (e.key === "Enter") {
+  e.preventDefault();
+
+  const textarea = editorRef.current;
+  const start = textarea.selectionStart;
+
+  // find current line start
+  const lineStart = content.lastIndexOf("\n", start - 1) + 1;
+
+  // get current line text
+  const currentLine = content.substring(lineStart, start);
+
+  // count leading spaces
+  let indent = "";
+  for (let i = 0; i < currentLine.length; i++) {
+    if (currentLine[i] === " ") indent += " ";
+    else break;
   }
 
-  // UNDO
-  if (modifier && e.key.toLowerCase() === "z" && !e.shiftKey) {
-    e.preventDefault();
-    undo();
-    return;
-  }
+  // insert newline + indent
+  const newValue =
+    content.substring(0, start) +
+    "\n" +
+    indent +
+    content.substring(start);
 
-  // REDO
-  if (modifier && e.key.toLowerCase() === "z" && e.shiftKey) {
-    e.preventDefault();
-    redo();
-    return;
-  }
-};
+  updateContent(newValue);
+
+  // place cursor after indentation
+  setTimeout(() => {
+    const newCursor = start + 1 + indent.length;
+    textarea.selectionStart = textarea.selectionEnd = newCursor;
+  }, 0);
+
+  return;
+}
+
+      // ================= TAB INDENT / OUTDENT =================
+      if (e.key === "Tab") {
+
+        e.preventDefault();
+
+        const textarea = editorRef.current;
+        const start = textarea.selectionStart;
+
+        // find start of current line
+        const lineStart = content.lastIndexOf("\n", start - 1) + 1;
+
+        // ---------- SHIFT + TAB (OUTDENT) ----------
+        if (e.shiftKey) {
+
+          if (content.substring(lineStart, lineStart + 2) === "  ") {
+
+            const newValue =
+              content.substring(0, lineStart) +
+              content.substring(lineStart + 2);
+
+            updateContent(newValue);
+
+            // restore cursor
+            setTimeout(() => {
+              textarea.selectionStart = textarea.selectionEnd = Math.max(lineStart, start - 2);
+            }, 0);
+          }
+          return;
+        }
+
+        // ---------- NORMAL TAB (INDENT) ----------
+        const newValue =
+          content.substring(0, lineStart) +
+          "  " +
+          content.substring(lineStart);
+
+        updateContent(newValue);
+
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+        }, 0);
+
+        return;
+      }
+    };
+
+    // ---------- OTHER EVENTS ----------
     const keyupHandler = (e) => addLog("keyup", e);
     const inputHandler = (e) => addLog("input", e);
     const compStart = (e) => addLog("compositionstart", e);
     const compEnd = (e) => addLog("compositionend", e);
 
+    // attach listeners
     editor.addEventListener("keydown", keydownHandler);
     editor.addEventListener("keyup", keyupHandler);
     editor.addEventListener("input", inputHandler);
     editor.addEventListener("compositionstart", compStart);
     editor.addEventListener("compositionend", compEnd);
 
-    // cleanup (VERY IMPORTANT in React)
+    // expose verification function (REQUIRED BY ASSIGNMENT)
+    window.getEditorState = () => ({
+      content: stateRef.current.content,
+      historySize: historySize
+    });
+
+    // cleanup
     return () => {
       editor.removeEventListener("keydown", keydownHandler);
       editor.removeEventListener("keyup", keyupHandler);
@@ -85,7 +185,8 @@ const { content, updateContent, undo, redo, historySize } = useEditorHistory("")
       editor.removeEventListener("compositionstart", compStart);
       editor.removeEventListener("compositionend", compEnd);
     };
-  }, []);
+
+  }, [historySize]);
 
   return (
     <div
@@ -97,20 +198,19 @@ const { content, updateContent, undo, redo, historySize } = useEditorHistory("")
       }}
     >
       <textarea
-  ref={editorRef}
-  value={content}
-  onChange={(e) => updateContent(e.target.value)}
-  data-test-id="editor-input"
-  style={{
-    width: "100%",
-    height: "100%",
-    fontFamily: "monospace",
-    fontSize: "16px",
-    outline: "none",
-    resize: "none"
-  }}
-/>
-
+        ref={editorRef}
+        value={content}
+        onChange={(e) => updateContent(e.target.value)}
+        data-test-id="editor-input"
+        style={{
+          width: "100%",
+          height: "100%",
+          fontFamily: "monospace",
+          fontSize: "16px",
+          outline: "none",
+          resize: "none"
+        }}
+      />
     </div>
   );
 }
